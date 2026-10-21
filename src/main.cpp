@@ -18,7 +18,8 @@ int main()
         std::cout << "1. 查看任务\n";
         std::cout << "2. 添加任务\n";
         std::cout << "3. 标记完成\n";
-        std::cout << "4. 退出\n"; 
+        std::cout << "4. 删除任务\n";
+        std::cout << "5. 退出\n";
         std::cout << "请选择: ";
         
         std::cin >> choice; // 把用户输入的数字读进 choice

@@ -1,8 +1,8 @@
 // =========================================================================
-// Manager 的实现文件。最硬核的业务逻辑全在这里。
+// Manager 的实现文件
 // =========================================================================
 #include "Manager.h"
-#include <iostream>  // 用于 std::cout 打印
+#include <iostream>  
 #include <fstream>   // 【文件流】ofstream(写文件) 和 ifstream(读文件) 都靠它
 #include <sstream>   // 【字符串流】解析文本的切菜神器
 #include <stdexcept> // 【异常库】用于 throw 报错
@@ -17,7 +17,7 @@ Manager::Manager(const std::string& file_path) : m_file_path(file_path)
 // 【析构函数实现】程序结束准备退出时，自动跑这里
 Manager::~Manager() 
 {
-    // 【血泪教训】在析构函数里，千万千万不能让异常跑出去（否则程序直接崩溃闪退）。
+    // 在析构函数里，千万千万不能让异常跑出去（否则程序直接崩溃闪退）。
     // 所以我们用 try-catch 把 save() 包起来，哪怕存盘失败，也只打印警告，安全退出。
     try {
         save(); 
@@ -25,13 +25,19 @@ Manager::~Manager()
     } catch (const std::exception& e) {
         std::cerr << "\n[系统警告] 自动保存失败: " << e.what() << std::endl;
     }
+    // 【语法】const std::exception& e：捕获标准异常基类的常量引用。
+    // 使用引用是为了防止对象切片（保留多态性），使用 const 是因为不需要修改异常对象。
 }
 
 void Manager::add(const std::string& desc) 
 {
-    // 【C++11 现代写法】emplace_back 
-    // 它比 push_back 更牛：它直接在数组尾部“原地”造一个 Task，不需要先造好再复制，省性能。
-    m_tasks.emplace_back(m_next_id, desc);
+    // 【语法】emplace 是 C++11 引入的容器操作。
+    // 它接收构造函数的参数，直接在 map 内部原地构造 pair，避免了临时对象的创建和拷贝。
+    // 【语法拆解】m_tasks.emplace(m_next_id, Task(m_next_id, desc)); 
+    // 1. m_next_id (第一个参数)：这是哈希表的【键 (Key)】，类型是 int。
+    // 2. Task(m_next_id, desc) (第二个参数)：这是哈希表的【值 (Value)】。
+    //    注意：这里直接调用了 Task 的构造函数，把 id 和 desc 传进去。
+    m_tasks.emplace(m_next_id,Task(m_next_id, desc));
     m_next_id++; // 编号用掉了，下一个编号 +1
     
     save(); // 【实时保存】只要加了任务，立刻写进硬盘。哪怕你直接按 Ctrl+C 杀进程，数据也绝不丢。
@@ -45,11 +51,13 @@ void Manager::show() const
         return;
     }
     
-    // 【范围 for 循环】把 m_tasks 里的任务挨个拿出来叫 task
-    // const auto& task：不复制对象（&），且只读不修改（const），是极致性能的写法。
-    for (const auto& task : m_tasks) 
+    // 【语法】范围 for 循环遍历 map。
+    // 每次迭代返回一个 pair 对象。
+    // const auto& pair：auto 推导为 std::pair<const int, Task>，& 避免拷贝整个 pair，const 保证只读。
+    for (const auto& pair : m_tasks) 
     {
-        // 三目运算符：条件 ? 结果1 : 结果2。如果完成就返回"[已完成] "，否则返回"[未完成] "。
+        // 【语法】pair.first 是键 (const int)，pair.second 是值 (Task)
+        const Task& task = pair.second;
         std::string status = task.isCompleted() ? "[已完成] " : "[未完成] ";
         std::cout << "[" << task.getId() << "] " << status << task.getDesc() << "\n";
     }
@@ -57,20 +65,19 @@ void Manager::show() const
 
 void Manager::done(int id) 
 {
-    // 【核心区别】这里用的是 auto& task，【没有】const！
-    // 因为我们要去修改它（调用 markCompleted），如果加了 const 编译器会报错。
-    for (auto& task : m_tasks) 
+    // 【语法】find() 返回一个迭代器（iterator）。
+    // 如果找到了，迭代器指向该键值对；如果没找到，返回 m_tasks.end()。
+    auto it=m_tasks.find(id);
+    if(it!=m_tasks.end())
     {
-        if (task.getId() == id) 
-        {
-            task.markCompleted(); // 找到对应任务，修改它的状态
-            save(); // 状态变了，立刻存盘
-            std::cout << "任务 [" << id << "] 已标记为完成！\n";
-            return; // 找到了并改完，直接 return 结束整个函数，不要再往后找了
-        }
+        it->second.markCompleted();
+        save();
+        std::cout << "任务 [" << id << "] 已标记为完成！\n";
     }
-    // 如果整个循环跑完了还没 return，说明没找到这个 ID
-    std::cout << "未找到 ID 为 " << id << " 的任务。\n";
+    else
+    {
+        std::cout << "未找到 ID 为 " << id << " 的任务。\n";
+    }
 }
 
 void Manager::save() const 
@@ -82,11 +89,10 @@ void Manager::save() const
     // 【防呆设计】如果打开失败（比如文件被其他程序占用），抛出异常终止操作。
     if (!file) throw std::runtime_error("无法打开文件进行保存: " + m_file_path);
 
-    // 遍历所有任务，写进文件里
-    for (const auto& task : m_tasks) 
+    // 遍历
+    for (const auto& pair : m_tasks) 
     {
-        // 格式：1|去吃饭|0 
-        // << 的作用就像一根吸管，把数据吸入文件流
+        const Task& task = pair.second;
         file << task.getId() << "|" 
              << task.getDesc() << "|" 
              << (task.isCompleted() ? "1" : "0") << "\n";
@@ -130,10 +136,13 @@ void Manager::load()
             std::getline(ss, item, '|'); 
             bool completed = (item == "1"); // 如果是 "1"，就是 true
 
-            m_tasks.emplace_back(id, desc, completed); // 放进货架
+            m_tasks.emplace(id,Task(id, desc, completed)); // 放进货架
             
-            if (id >= m_next_id) m_next_id = id + 1; // 保证 ID 不重复
-        } 
+            if (id >= m_next_id)
+            {
+                m_next_id=id+1;
+            }
+        }
         catch (const std::exception& e) {
             // 如果文件里某一行被别人恶意改成了乱码（如 "abc|1|0"），stoi 会崩溃。
             // 这个 catch 能接住错误，跳过这一行，保证程序不闪退。
@@ -144,15 +153,15 @@ void Manager::load()
 
 void Manager::remove(int id)
 {
-    for(auto it=m_tasks.begin();it!=m_tasks.end();++it)
+    // 【语法】erase(key) 会删除指定的键，并返回被删除的元素数量（size_t 类型）。
+    // 如果键存在，返回 1；如果不存在，返回 0。这比先用 find 再 erase 更高效。
+   int cout=m_tasks.erase(id);
+   if(cout==0)
     {
-        if(it->getId()==id)
-        {
-            it=m_tasks.erase(it);
-        }
-        save();
-        std::cout << "任务 [" << id << "] 已成功删除！\n";
-        return;
+        std::cout << "未找到 ID 为 " << id << " 的任务。\n";
     }
-    std::cout << "未找到 ID 为 " << id << " 的任务。\n";
+    else
+    {
+        std::cout << "任务 [" << id << "] 已成功删除！\n";
+    }
 }

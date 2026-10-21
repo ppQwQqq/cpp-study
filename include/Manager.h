@@ -2,16 +2,18 @@
 // Manager 类的头文件（总经理）。它负责管理所有的 Task。
 // =========================================================================
 #pragma once
-#include <vector>   // 【容器】我们要用 vector（动态数组）当货架装任务
+#include <vector>
+#include <unordered_map>   // 【语法】引入无序哈希表头文件。底层基于哈希表实现，查找时间复杂度为 O(1)
 #include <string>
 #include "Task.h"   // 必须包含 Task，不然货架里不知道装什么
 
 class Manager 
 {
 private:
-    // 【大货架】m_tasks 是一个动态数组，里面只能放 Task 类型的对象。
-    // 你往里面塞多少个，它自己会动态扩容，永远不会越界。
-    std::vector<Task> m_tasks; 
+    // 【语法】std::unordered_map<Key, Value>：
+    // 这里的 Key 是 int（任务 ID），Value 是 Task 对象。
+    // 容器中实际存储的是 std::pair<const int, Task> 类型的键值对。
+    std::unordered_map<int, Task> m_tasks;
     int m_next_id = 1;         // 下一个新任务该分配的编号
     std::string m_file_path;   // 数据保存的文件路径（如 "tasks.db"）
 
