@@ -36,8 +36,11 @@ void Manager::add(const std::string& desc)
     // 【语法拆解】m_tasks.emplace(m_next_id, Task(m_next_id, desc)); 
     // 1. m_next_id (第一个参数)：这是哈希表的【键 (Key)】，类型是 int。
     // 2. Task(m_next_id, desc) (第二个参数)：这是哈希表的【值 (Value)】。
-    //    注意：这里直接调用了 Task 的构造函数，把 id 和 desc 传进去。
-    m_tasks.emplace(m_next_id,Task(m_next_id, desc));
+     // 【核心语法】std::make_unique<Task>(m_next_id, desc)
+    // 1. 它在堆（Heap）内存上动态分配内存，并调用 Task 的构造函数。
+    // 2. 它返回一个 std::unique_ptr<Task> 类型的智能指针对象。
+    // 3. emplace 会直接把这对“键值对”原地构造进哈希表中，零拷贝。
+    m_tasks.emplace(m_next_id,std::make_unique<Task>(m_next_id, desc));
     m_next_id++; // 编号用掉了，下一个编号 +1
     
     save(); // 【实时保存】只要加了任务，立刻写进硬盘。哪怕你直接按 Ctrl+C 杀进程，数据也绝不丢。
@@ -56,10 +59,14 @@ void Manager::show() const
     // const auto& pair：auto 推导为 std::pair<const int, Task>，& 避免拷贝整个 pair，const 保证只读。
     for (const auto& pair : m_tasks) 
     {
-        // 【语法】pair.first 是键 (const int)，pair.second 是值 (Task)
-        const Task& task = pair.second;
-        std::string status = task.isCompleted() ? "[已完成] " : "[未完成] ";
-        std::cout << "[" << task.getId() << "] " << status << task.getDesc() << "\n";
+        // 【核心语法】pair.second 现在的类型是 std::unique_ptr<Task>，它是个指针对象。
+        // 1. 所以不能再用 . 访问成员（如 pair.second.getDesc() 是错的）。
+        // 2. 必须用 -> 访问（如 pair.second->getDesc()）。
+
+        //用 const auto& 绑定智能指针
+        const auto& task = pair.second;
+        std::string status = task->isCompleted() ? "[已完成] " : "[未完成] ";
+        std::cout << "[" << task->getId() << "] " << status << task->getDesc() << "\n";
     }
 }
 
@@ -70,7 +77,7 @@ void Manager::done(int id)
     auto it=m_tasks.find(id);
     if(it!=m_tasks.end())
     {
-        it->second.markCompleted();
+        it->second->markCompleted();
         save();
         std::cout << "任务 [" << id << "] 已标记为完成！\n";
     }
@@ -92,10 +99,10 @@ void Manager::save() const
     // 遍历
     for (const auto& pair : m_tasks) 
     {
-        const Task& task = pair.second;
-        file << task.getId() << "|" 
-             << task.getDesc() << "|" 
-             << (task.isCompleted() ? "1" : "0") << "\n";
+        const auto& task = pair.second;
+        file << task->getId() << "|" 
+             << task->getDesc() << "|" 
+             << (task->isCompleted() ? "1" : "0") << "\n";
     }
     // 【RAII 魔法】不需要手动写 file.close()！
     // 函数结束时，file 对象会被自动销毁，它的析构函数会自动帮你把文件安全关闭。
